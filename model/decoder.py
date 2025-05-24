@@ -11,18 +11,12 @@ class Decoder(nn.Module):
 
         self.fc = nn.Linear(latent_dim, hidden_dims[3] * 4 * 4)
         self.conv_block = nn.Sequential(
-            nn.ConvTranspose2d(hidden_dims[3], hidden_dims[2], kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(hidden_dims[2]),
-            nn.ReLU(),
-
-            nn.ConvTranspose2d(hidden_dims[2], hidden_dims[1], kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(hidden_dims[3], hidden_dims[1], kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(hidden_dims[1]),
             nn.ReLU(),
-
             nn.ConvTranspose2d(hidden_dims[1], hidden_dims[0], kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(hidden_dims[0]),
             nn.ReLU(),
-
             nn.ConvTranspose2d(hidden_dims[0], in_channels, kernel_size=4, stride=2, padding=1),
             nn.Tanh()
         )
