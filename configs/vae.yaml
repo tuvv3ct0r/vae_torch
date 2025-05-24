@@ -2,14 +2,12 @@ model_params:
   in_channels: 3
   latent_dim: 128
 
-
 data_params:
   data_path: "data/"
   train_batch_size: 64
-  val_batch_size:  64
-  patch_size: 64
-  num_workers: 4
-
+  val_batch_size: 64
+  patch_size: [32, 32]
+  num_workers: 2
 
 exp_params:
   LR: 0.005
@@ -19,10 +17,9 @@ exp_params:
   manual_seed: 1265
 
 trainer_params:
-  accelerator: "cpu"  # Specify GPU as the accelerator
-  devices: [3]       # Use GPU device ID 0
+  accelerator: "gpu"
+  devices: [0]
   max_epochs: 100
 
 logging_params:
   save_dir: "logs/"
-  
