@@ -12,6 +12,7 @@ from pytorch_lightning.strategies import DDPStrategy
 from dataset import CIFAR10DataModule
 from model.vae import VAE
 from train import VAETrainer
+from callbacks import LossPlotCallback
 
 
 parser = argparse.ArgumentParser()
@@ -45,6 +46,7 @@ runner = Trainer(logger=tb_logger,
                                      dirpath=os.path.join(tb_logger.log_dir, "checkpoints"), 
                                      monitor="val_loss",
                                      save_last=True),
+                     LossPlotCallback(plot_frequency=10),
                  ],
                  strategy=DDPStrategy(find_unused_parameters=False),
                  **config['trainer_params'])

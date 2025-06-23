@@ -1,3 +1,4 @@
-data/celeba/
+data/
+logs/
 
 *__pycache__/

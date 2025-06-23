@@ -15,6 +15,12 @@ class VAETrainer(LightningModule):
             self.hold_graph = self.params['retain_first_backpass']
         else:
             self.hold_graph = False
+        self.train_losses = []
+        self.val_losses = []
+        self.train_recon_losses = []
+        self.train_kld_losses = []
+        self.val_recon_losses = []
+        self.val_kld_losses = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
@@ -23,15 +29,49 @@ class VAETrainer(LightningModule):
         real_images, _ = batch
         results = self.forward(real_images)
         train_loss = self.model.loss_function(*results, batch_idx=batch_idx)
+        if torch.isnan(train_loss['loss']):
+            print(f"NaN detected in training loss at batch {batch_idx}")
+        self.train_losses.append(train_loss['loss'].detach())
+        self.train_recon_losses.append(train_loss['Reconstruction_Loss'].detach())
+        self.train_kld_losses.append(train_loss['KLD'].detach())
         self.log_dict({key: val.item() for key, val in train_loss.items()}, sync_dist=True)
         return train_loss['loss']
+    
+    def on_train_epoch_end(self):
+        if self.train_losses:
+            avg_loss = torch.stack([x for x in self.train_losses if not torch.isnan(x)]).mean() if self.train_losses else torch.tensor(0.0)
+            avg_recon = torch.stack([x for x in self.train_recon_losses if not torch.isnan(x)]).mean() if self.train_recon_losses else torch.tensor(0.0)
+            avg_kld = torch.stack([x for x in self.train_kld_losses if not torch.isnan(x)]).mean() if self.train_kld_losses else torch.tensor(0.0)
+            self.log('train_loss_epoch', avg_loss, on_epoch=True, prog_bar=True, sync_dist=True)
+            self.log('train_recon_loss_epoch', avg_recon, on_epoch=True, sync_dist=True)
+            self.log('train_kld_loss_epoch', avg_kld, on_epoch=True, sync_dist=True)
+            self.train_losses = []
+            self.train_recon_losses = []
+            self.train_kld_losses = []
     
     def validation_step(self, batch, batch_idx):
         real_img, _ = batch
         results = self.forward(real_img)
         val_loss = self.model.loss_function(*results, batch_idx=batch_idx)
+        if torch.isnan(val_loss['loss']):
+            print(f"NaN detected in validation loss at batch {batch_idx}")
+        self.val_losses.append(val_loss['loss'].detach())
+        self.val_recon_losses.append(val_loss['Reconstruction_Loss'].detach())
+        self.val_kld_losses.append(val_loss['KLD'].detach())
         self.log_dict({f"val_{key}": val.item() for key, val in val_loss.items()}, sync_dist=True)
         return val_loss['loss']
+    
+    def on_validation_epoch_end(self):
+        if self.val_losses:
+            avg_loss = torch.stack([x for x in self.val_losses if not torch.isnan(x)]).mean() if self.val_losses else torch.tensor(0.0)
+            avg_recon = torch.stack([x for x in self.val_recon_losses if not torch.isnan(x)]).mean() if self.val_recon_losses else torch.tensor(0.0)
+            avg_kld = torch.stack([x for x in self.val_kld_losses if not torch.isnan(x)]).mean() if self.val_kld_losses else torch.tensor(0.0)
+            self.log('val_loss_epoch', avg_loss, on_epoch=True, prog_bar=True, sync_dist=True)
+            self.log('val_recon_loss_epoch', avg_recon, on_epoch=True, sync_dist=True)
+            self.log('val_kld_loss_epoch', avg_kld, on_epoch=True, sync_dist=True)
+            self.val_losses = []
+            self.val_recon_losses = []
+            self.val_kld_losses = []
     
     def on_validation_end(self) -> None:
         self.sample_images()
@@ -41,7 +81,6 @@ class VAETrainer(LightningModule):
         test_input = test_input.to(self.device)
         test_label = test_label.to(self.device)
 
-        # Encode input to get latent vector z
         mu, log_var = self.model.encoder(test_input)
         z = self.model.reparameterize(mu, log_var)
         recons = self.model.generate(z)
@@ -70,5 +109,10 @@ class VAETrainer(LightningModule):
         if 'scheduler_gamma' in self.params:
             scheduler = optim.lr_scheduler.ExponentialLR(optimizer,
                                                         gamma=self.params['scheduler_gamma'])
-            return {"optimizer": optimizer, "lr_scheduler": scheduler}
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": scheduler,
+                "gradient_clip_val": 1.0,
+                "gradient_clip_algorithm": "norm"
+            }
         return optimizer

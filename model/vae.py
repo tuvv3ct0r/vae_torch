@@ -24,8 +24,11 @@ class VAE(nn.Module):
 
     def forward(self, x: torch.Tensor):
         mu, log_var = self.encoder(x)
+        # Clamp log_var to prevent numerical instability
+        log_var = torch.clamp(log_var, min=-10, max=10)
         z = self.reparameterize(mu, log_var)
-        return [self.decoder(z), x, mu, log_var]
+        recon_x = self.decoder(z)
+        return [recon_x, x, mu, log_var]
     
     def sample(self, num_samples) -> torch.Tensor:
         z = torch.randn(num_samples, self.latent_dim).to(self.decoder.fc.weight.device)
@@ -35,7 +38,16 @@ class VAE(nn.Module):
         return self.decoder(z)
     
     def loss_function(self, recon_x, x, mu, log_var, **kwargs):
-        recon_loss = F.mse_loss(recon_x, x)
+        recon_loss = F.mse_loss(recon_x, x, reduction='mean')
         kl_loss = -0.5 * torch.mean(1 + log_var - mu.pow(2) - log_var.exp())
         loss = recon_loss + self.kld_weight * kl_loss
-        return {'loss': loss, 'Reconstruction_Loss': recon_loss.detach(), 'KLD': kl_loss.detach()}
+        if torch.isnan(loss):
+            print(f"NaN loss detected: Recon={recon_loss.item()}, KLD={kl_loss.item()}, Batch={kwargs.get('batch_idx', 0)}")
+        else:
+            if kwargs.get('batch_idx', 0) == 0:
+                print(f"Recon Loss: {recon_loss.item()}, KLD: {kl_loss.item()}, Total Loss: {loss.item()}")
+        return {
+            'loss': loss,
+            'Reconstruction_Loss': recon_loss.detach(),
+            'KLD': kl_loss.detach()
+        }
